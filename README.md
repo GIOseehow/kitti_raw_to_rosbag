@@ -1,28 +1,26 @@
 # kitti_raw_to_rosbag
 
-为了在KITTI数据集上验证 SLAM 算法（如 FAST-LIO 等），通常需要以下数据特性：
-- 未去畸变的原始点云，包含每个点的时间戳
-- 高频率的IMU数据
+To validate SLAM algorithms (such as FAST-LIO) on the KITTI dataset, the following data characteristics are usually required:
+- Raw undistorted point clouds with per-point timestamps
+- High-frequency IMU data
 
-常用的 KITTI 转 ROSbag 工具 [kitti2bag](https://github.com/tomas789/kitti2bag)、 [kitti_to_rosbag](https://github.com/ethz-asl/kitti_to_rosbag) 处理后的包只有10Hz的点云数据，并且使用的是去畸变后的点云。
+Common tools for converting KITTI to ROSbag such as [kitti2bag](https://github.com/tomas789/kitti2bag) and [kitti_to_rosbag](https://github.com/ethz-asl/kitti_to_rosbag) only produce 10Hz point clouds and use rectified data.
 
-本kitti_raw_to_rosbag工具使用基于 [KITTI](https://www.cvlibs.net/datasets/kitti/raw_data.php) 官网提供的 “unsynced+unrectified data“ 数据，具备以下功能：
-- 发布未去畸变的 Velodyne 点云（10Hz）
-- 发布高频IMU数据（100Hz）
-- 为每帧点云中的点添加 ring 字段（0-63）
-- 为每帧点云中的点添加 time 字段（0-0.1s）
-  
-![kitti_with_rings](images/kitti_with_rings.png)  
+This `kitti_raw_to_rosbag` tool uses the “unsynced+unrectified data” provided by the [KITTI website](https://www.cvlibs.net/datasets/kitti/raw_data.php), and provides the following features:
+- Publish undistorted Velodyne point clouds (10Hz)
+- Publish high-frequency IMU data (100Hz)
+- Add a `ring` field (0–63) to each point in the cloud
+- Add a `time` field (0–0.1s) to each point in the cloud
 
+![kitti_with_rings](images/kitti_with_rings.png)
 
-这个工具主要是方便自己用，本身并不复杂，主要参考并修改 [pykitti](https://github.com/utiasSTARS/pykitti)，顺手整理分享出来，分享给可能也用得上的人。
+This tool was mainly built for personal use. It's not complicated, and mostly based on [pykitti](https://github.com/utiasSTARS/pykitti), shared here in case others find it useful.
 
-## 1. 数据集准备
-### 1.1 下载
-请先在 [KITTI](https://www.cvlibs.net/datasets/kitti/raw_data.php) 上下载对应的 raw 文件。
+## 1. Dataset Preparation
+### 1.1 Download
+Please download the corresponding raw files from [KITTI](https://www.cvlibs.net/datasets/kitti/raw_data.php).
 
-在 KITTI 官网中 odometry 页面里可以下载的 80GB odometry data set (velodyne laser data) 包含 22 组数据，其中 11 组带有 ground truth，压缩包本身太大，因此可以下载对应raw数据如下：
-
+The 80GB odometry dataset available on the KITTI odometry page includes 22 sequences, 11 of which contain ground truth. Since the compressed package is large, you can instead download the corresponding raw data as follows:
 
 ```
 Nr.     Sequence name     Start   End   Size(GB)
@@ -39,9 +37,12 @@ Nr.     Sequence name     Start   End   Size(GB)
 09: 2011_09_30_drive_0033 000000 001590 6.2
 10: 2011_09_30_drive_0034 000000 001200 4.8
 ```
-注意 80G 的文件里面的点云为.bin格式，raw文件为里面的点云为.txt格式，如果是.bin格式需要手动进行修改程序，但处理速度可能会加快。
-### 1.2 格式
-下载完 raw 数据和标定文件之后，图像文件可以删掉（这个包用不到图像），目录结构整理成下面这样，放在 kitti_raw_to_rosbag 目录下。
+
+Note: The 80GB odometry files contain `.bin` point clouds, while the raw files contain `.txt`. If you use `.bin` format, you'll need to modify the script manually, though it may run faster.
+
+### 1.2 Format
+After downloading the raw data and calibration files, you can delete the image files (they are not needed here). Organize the folder structure as follows and place it under the `kitti_raw_to_rosbag` directory.
+
 ```
 2011_09_30
 ├── 2011_09_30_drive_0018_extract
@@ -58,49 +59,51 @@ Nr.     Sequence name     Start   End   Size(GB)
 ├── calib_imu_to_velo.txt
 └── calib_velo_to_cam.txt
 ```
-## 2. 转换包
-修改 process_kitti.py 中的 basedir、date、drive，然后运行：
+
+## 2. Convert Bag
+Modify `basedir`, `date`, and `drive` in `process_kitti.py`, then run:
 
 ```
 $ cd ~/slam_ws/src/kitti_raw_to_rosbag
 $ python3 -m kitti_to_rosbag_gio.process_kitti
 ```
-漫长的等待过后，会得到转换过后的包。
+
+After a long wait, you will get the converted ROS bag file.
 
 ![bag](images/bag.png)
-## 3. 分析与实现细节
-注释掉 process_kitti.py 里面的 
+
+## 3. Analysis and Implementation Details
+Comment out the following line in `process_kitti.py`:
 ```
 make_bag(dataset)
 ```
-然后取消注释
+Then uncomment:
 ```
 test_point_format(dataset)
 ```
-可以分析kitti数据集某一帧的格式。
+This allows you to inspect the format of a single frame in the KITTI dataset.
 
-### 3.1 kitti 格式分析
-velodyne_points/data 下的每一个 .txt 文件就是一帧点云数据，每一行代表一个点。可以用 arctan(y/x) 计算每个点的扫描角度（也就是它在水平面的方向）。观察数据后发现，这些点并不是按时间顺序排列的，而是先把同一条激光线上的点放一起，然后一共64条线依次排列。
+### 3.1 KITTI Format Analysis
+Each `.txt` file under `velodyne_points/data` is a point cloud frame. Each row is a point. You can compute the horizontal angle with `arctan(y/x)` (i.e., direction on the horizontal plane). After examining the data, it appears that points are **not** in time order. Instead, points from the same laser ring are grouped together, and there are 64 such lines.
 
-也就是说，点云的顺序是“先把每条线的点集中起来”，线内的点才是按照时间顺序排的。这一点很重要，尤其是在给点云加环号（ring）和时间戳的时候。
+That is, the point cloud is ordered by laser ring first; within each ring, the points are in temporal order. This is important, especially when assigning ring ID and timestamp to each point.
 
 ![theta](images/theta.png)
 
-用 arctan[z/(x^2+y^2)^0.5] 计算每个点的俯仰角。可以看见，每一线上的点云，虽然整体趋势是俯仰角随着线数增加逐渐减小，但它的俯仰角并不稳定。这一点也可以在 pitch—theta 图上直观地看出来，一条线上的点云，俯仰角会上下波动。这一点不知是否是我的理解有误。
+Use `arctan[z / sqrt(x^2 + y^2)]` to compute pitch angles. You will see that although pitch generally decreases with increasing ring ID, it is not stable within a ring. This is also clearly visible in the pitch–theta plots, where pitch fluctuates within a single ring. It is unclear if this is sensor noise or something else.
 
 ![pitch](images/pitch.png)
 ![pitch_theta](images/pitch_theta.png)
 
 ### 3.1 ring
-因此，根据格式上的分析，用俯仰角来区分环数难以实现，因此主要使用旋转角度来区分环数。
+Due to the instability of pitch, it is difficult to infer the ring ID from pitch. Therefore, this tool mainly uses the horizontal angle (`theta`) to differentiate rings.
 
-通过记录旋转角度（theta）从360°降到0°的点的index，来批量为点赋值 ring，如下图所示，ring 为从0到64,具体实现在 process_kitti.py 的 save_velo_data 函数里。
+By recording the index where `theta` drops from 360° to 0°, the tool assigns `ring` values in batches from 0 to 64. The implementation is in the `save_velo_data` function in `process_kitti.py`.
 
 ![rings](images/rings.png)
 ![kitti_with_rings](images/kitti_with_rings.png)
 
 ### 3.2 time
-在有了每个点的 ring 之后，就可以为每个点分配时间了。这里没有使用固定的 0.1s，而是使用每帧点云的 timestamps_end 减去 timestamps_start，再根据每个 ring 上点的个数，对时间进行线性插值，时间精度为微秒级。每帧点云的header.stamp使用数据集中的 timestamps_start。
+After assigning rings, you can assign time to each point. Instead of using a fixed 0.1s, the actual frame duration is computed as `timestamps_end - timestamps_start`, and time for each point is linearly interpolated within its ring. Time precision reaches the microsecond level. Each frame's `header.stamp` uses the dataset’s `timestamps_start`.
 
 ![times](images/times.png)
-
